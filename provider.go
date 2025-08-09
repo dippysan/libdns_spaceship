@@ -256,7 +256,7 @@ func (p *Provider) AppendRecords(ctx context.Context, zone string, records []lib
 		err := p.client.CreateRecord(zone, rec)
 		if err != nil {
 			rr := record.RR()
-			return nil, fmt.Errorf("failed to create record %s: %w", rr.Name, err)
+			return nil, fmt.Errorf("failed to create record %s: zone %s, record %+v, rec %+v, error %w", rr.Name, zone, record, rec, err)
 		}
 
 		createdRecords = append(createdRecords, record)
@@ -279,7 +279,7 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 		updateRec, err := p.upsertRecord(record, zone)
 		if err != nil {
 			rr := record.RR()
-			return nil, fmt.Errorf("failed to update record %s: %w", rr.Name, err)
+			return nil, fmt.Errorf("failed to update record %s: zone %s, record %+v, updateRec %+v, error %w", rr.Name, zone, record, updateRec, err)
 		}
 
 		// Convert updated SpaceshipRecord to libdns.Record and append to the result slice
@@ -300,7 +300,7 @@ func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []lib
 
 	all_records, err := p.client.GetRecords(zone)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get records for zone %s: %w", zone, err)
+		return nil, fmt.Errorf("failed to get records for zone %s: error %w", zone, err)
 	}
 
 	var deletedRecords []libdns.Record
@@ -314,7 +314,7 @@ func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []lib
 			if p.fqdn(rec.Name, zone) == p.fqdn(rr.Name, zone) && rec.Type == rr.Type {
 				err := p.client.DeleteRecord(zone, rec)
 				if err != nil {
-					return nil, fmt.Errorf("failed to delete record %s: %w", rr.Name, err)
+					return nil, fmt.Errorf("failed to delete record %s: zone %s, record %+v, rec %+v, error %w", rr.Name, zone, record, rec, err)
 				}
 				found = true
 				break
