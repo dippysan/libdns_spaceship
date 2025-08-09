@@ -47,6 +47,8 @@ func NewSpaceshipClient(apiKey, apiSecret string) *SpaceshipClient {
 
 // GetRecords retrieves DNS records for a domain
 func (c *SpaceshipClient) GetRecords(domain string) ([]SpaceshipRecord, error) {
+	// Remove trailing dot for API compatibility
+	domain = strings.TrimSuffix(domain, ".")
 	url := fmt.Sprintf("%s/dns/records/%s?take=500&skip=0", c.baseURL, domain)
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -77,6 +79,8 @@ func (c *SpaceshipClient) GetRecords(domain string) ([]SpaceshipRecord, error) {
 
 // CreateRecord creates a new DNS record
 func (c *SpaceshipClient) CreateRecord(domain string, record SpaceshipRecord) error {
+	// Remove trailing dot for API compatibility
+	domain = strings.TrimSuffix(domain, ".")
 	url := fmt.Sprintf("%s/dns/records/%s", c.baseURL, domain)
 
 	// API expects an object with "items" field containing the record
@@ -121,6 +125,8 @@ func (c *SpaceshipClient) CreateRecord(domain string, record SpaceshipRecord) er
 
 // DeleteRecord deletes a DNS record
 func (c *SpaceshipClient) DeleteRecord(domain string, record SpaceshipRecord) error {
+	// Remove trailing dot for API compatibility
+	domain = strings.TrimSuffix(domain, ".")
 	url := fmt.Sprintf("%s/dns/records/%s", c.baseURL, domain)
 
 	// Try sending just the array of records for DELETE

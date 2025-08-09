@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	spaceship "github.com/dippysan/libdns_spaceship"
 	"github.com/joho/godotenv"
 	"github.com/libdns/libdns"
-	"github.com/libdns/spaceship"
 )
 
 func main() {
