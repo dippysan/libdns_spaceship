@@ -5,6 +5,7 @@ package spaceship
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -26,29 +27,51 @@ type Provider struct {
 // init initializes the provider.
 func (p *Provider) init(ctx context.Context) {
 	p.once.Do(func() {
+		log.Printf("[LIBDNS-DEBUG] Initializing Spaceship provider with APIKey: %s (length: %d)",
+			maskAPIKey(p.APIKey), len(p.APIKey))
+		log.Printf("[LIBDNS-DEBUG] APISecret length: %d", len(p.APISecret))
 		p.client = NewSpaceshipClient(p.APIKey, p.APISecret)
 	})
 }
 
+// maskAPIKey masks the API key for safe logging
+func maskAPIKey(apiKey string) string {
+	if len(apiKey) <= 8 {
+		return strings.Repeat("*", len(apiKey))
+	}
+	return apiKey[:4] + strings.Repeat("*", len(apiKey)-8) + apiKey[len(apiKey)-4:]
+}
+
 // GetRecords lists all the records in the zone.
 func (p *Provider) GetRecords(ctx context.Context, zone string) ([]libdns.Record, error) {
+	log.Printf("[LIBDNS-DEBUG] GetRecords called with zone: '%s'", zone)
+	log.Printf("[LIBDNS-DEBUG] Context: %+v", ctx)
+
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	p.init(ctx)
 
 	records, err := p.client.GetRecords(zone)
 	if err != nil {
+		log.Printf("[LIBDNS-DEBUG] GetRecords failed for zone '%s': %v", zone, err)
 		return nil, fmt.Errorf("failed to get records for zone %s: %w", zone, err)
 	}
 
+	log.Printf("[LIBDNS-DEBUG] Retrieved %d raw records from Spaceship API", len(records))
+
 	var libdnsRecords []libdns.Record
-	for _, rec := range records {
+	for i, rec := range records {
+		log.Printf("[LIBDNS-DEBUG] Raw record %d: %+v", i, rec)
 		record := p.convertToLibdnsRecord(rec, zone)
 		if record != nil {
 			libdnsRecords = append(libdnsRecords, record)
+			log.Printf("[LIBDNS-DEBUG] Converted record %d: %+v", i, record.RR())
+		} else {
+			log.Printf("[LIBDNS-DEBUG] Record %d conversion returned nil", i)
 		}
 	}
 
+	log.Printf("[LIBDNS-DEBUG] GetRecords returning %d libdns records for zone '%s'", len(libdnsRecords), zone)
 	return libdnsRecords, nil
 }
 
@@ -245,89 +268,146 @@ func (p *Provider) convertFromLibdnsRecord(record libdns.Record, zone string) Sp
 
 // AppendRecords adds records to the zone. It returns the records that were added.
 func (p *Provider) AppendRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
+	log.Printf("[LIBDNS-DEBUG] AppendRecords called with zone: '%s', %d records", zone, len(records))
+	log.Printf("[LIBDNS-DEBUG] Context: %+v", ctx)
+
+	for i, record := range records {
+		rr := record.RR()
+		log.Printf("[LIBDNS-DEBUG] Input record %d: Name='%s', Type='%s', Data='%s', TTL=%v",
+			i, rr.Name, rr.Type, rr.Data, rr.TTL)
+		log.Printf("[LIBDNS-DEBUG] Input record %d full struct: %+v", i, record)
+	}
+
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	p.init(ctx)
 
 	var createdRecords []libdns.Record
-	for _, record := range records {
+	for i, record := range records {
+		log.Printf("[LIBDNS-DEBUG] Processing record %d for creation", i)
 		rec := p.convertFromLibdnsRecord(record, zone)
+		log.Printf("[LIBDNS-DEBUG] Converted to Spaceship record %d: %+v", i, rec)
 
 		err := p.client.CreateRecord(zone, rec)
 		if err != nil {
 			rr := record.RR()
+			log.Printf("[LIBDNS-DEBUG] Failed to create record %d: %v", i, err)
 			return nil, fmt.Errorf("failed to create record %s: zone %s, record %+v, rec %+v, error %w", rr.Name, zone, record, rec, err)
 		}
 
+		log.Printf("[LIBDNS-DEBUG] Successfully created record %d", i)
 		createdRecords = append(createdRecords, record)
 	}
 
+	log.Printf("[LIBDNS-DEBUG] AppendRecords returning %d created records for zone '%s'", len(createdRecords), zone)
 	return createdRecords, nil
 }
 
 // SetRecords sets the records in the zone, either by updating existing records or creating new ones.
 // It returns the updated records.
 func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
+	log.Printf("[LIBDNS-DEBUG] SetRecords called with zone: '%s', %d records", zone, len(records))
+	log.Printf("[LIBDNS-DEBUG] Context: %+v", ctx)
+
+	for i, record := range records {
+		rr := record.RR()
+		log.Printf("[LIBDNS-DEBUG] Input record %d: Name='%s', Type='%s', Data='%s', TTL=%v",
+			i, rr.Name, rr.Type, rr.Data, rr.TTL)
+		log.Printf("[LIBDNS-DEBUG] Input record %d full struct: %+v", i, record)
+	}
+
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	p.init(ctx)
 
 	var updatedRecords []libdns.Record
 
-	for _, record := range records {
+	for i, record := range records {
+		log.Printf("[LIBDNS-DEBUG] Processing record %d for upsert", i)
 		// Attempt to update the record using the client
 		updateRec, err := p.upsertRecord(record, zone)
 		if err != nil {
 			rr := record.RR()
+			log.Printf("[LIBDNS-DEBUG] Failed to upsert record %d: %v", i, err)
 			return nil, fmt.Errorf("failed to update record %s: zone %s, record %+v, updateRec %+v, error %w", rr.Name, zone, record, updateRec, err)
 		}
+
+		log.Printf("[LIBDNS-DEBUG] Upsert result for record %d: %+v", i, updateRec)
 
 		// Convert updated SpaceshipRecord to libdns.Record and append to the result slice
 		updatedRecord := p.convertToLibdnsRecord(*updateRec, zone)
 		if updatedRecord != nil {
+			log.Printf("[LIBDNS-DEBUG] Converted upsert result %d: %+v", i, updatedRecord.RR())
 			updatedRecords = append(updatedRecords, updatedRecord)
+		} else {
+			log.Printf("[LIBDNS-DEBUG] Upsert result %d conversion returned nil", i)
 		}
 	}
 
+	log.Printf("[LIBDNS-DEBUG] SetRecords returning %d updated records for zone '%s'", len(updatedRecords), zone)
 	return updatedRecords, nil
 }
 
 // DeleteRecords deletes the records from the zone. It returns the records that were deleted.
 func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
+	log.Printf("[LIBDNS-DEBUG] DeleteRecords called with zone: '%s', %d records", zone, len(records))
+	log.Printf("[LIBDNS-DEBUG] Context: %+v", ctx)
+
+	for i, record := range records {
+		rr := record.RR()
+		log.Printf("[LIBDNS-DEBUG] Input record %d to delete: Name='%s', Type='%s', Data='%s', TTL=%v",
+			i, rr.Name, rr.Type, rr.Data, rr.TTL)
+		log.Printf("[LIBDNS-DEBUG] Input record %d full struct: %+v", i, record)
+	}
+
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	p.init(ctx)
 
 	all_records, err := p.client.GetRecords(zone)
 	if err != nil {
+		log.Printf("[LIBDNS-DEBUG] Failed to get existing records for zone '%s': %v", zone, err)
 		return nil, fmt.Errorf("failed to get records for zone %s: error %w", zone, err)
 	}
 
+	log.Printf("[LIBDNS-DEBUG] Found %d existing records in zone '%s' for deletion matching", len(all_records), zone)
+
 	var deletedRecords []libdns.Record
 
-	for _, record := range records {
+	for i, record := range records {
 		rr := record.RR()
+		log.Printf("[LIBDNS-DEBUG] Looking for record %d to delete: Name='%s', Type='%s'", i, rr.Name, rr.Type)
 
 		// Find the record to delete
 		found := false
-		for _, rec := range all_records {
-			if p.fqdn(rec.Name, zone) == p.fqdn(rr.Name, zone) && rec.Type == rr.Type {
+		for j, rec := range all_records {
+			fqdnMatch := p.fqdn(rec.Name, zone) == p.fqdn(rr.Name, zone)
+			typeMatch := rec.Type == rr.Type
+			log.Printf("[LIBDNS-DEBUG] Comparing with existing record %d: Name='%s'->FQDN='%s', Type='%s', FQDN_match=%v, Type_match=%v",
+				j, rec.Name, p.fqdn(rec.Name, zone), rec.Type, fqdnMatch, typeMatch)
+
+			if fqdnMatch && typeMatch {
+				log.Printf("[LIBDNS-DEBUG] Found matching record %d for deletion: %+v", j, rec)
 				err := p.client.DeleteRecord(zone, rec)
 				if err != nil {
+					log.Printf("[LIBDNS-DEBUG] Failed to delete record %d: %v", i, err)
 					return nil, fmt.Errorf("failed to delete record %s: zone %s, record %+v, rec %+v, error %w", rr.Name, zone, record, rec, err)
 				}
+				log.Printf("[LIBDNS-DEBUG] Successfully deleted record %d", i)
 				found = true
 				break
 			}
 		}
 
 		if !found {
+			log.Printf("[LIBDNS-DEBUG] Record %d not found for deletion: %s of type %s", i, rr.Name, rr.Type)
 			return nil, fmt.Errorf("record %s of type %s not found", rr.Name, rr.Type)
 		}
 
 		deletedRecords = append(deletedRecords, record)
 	}
 
+	log.Printf("[LIBDNS-DEBUG] DeleteRecords returning %d deleted records for zone '%s'", len(deletedRecords), zone)
 	return deletedRecords, nil
 }
 
