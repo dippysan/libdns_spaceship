@@ -112,7 +112,8 @@ func (c *SpaceshipClient) CreateRecord(domain string, record SpaceshipRecord) er
 		if resp.Body != nil {
 			errorBody, _ = io.ReadAll(resp.Body)
 		}
-		return fmt.Errorf("API request failed with status: %d, body: %s", resp.StatusCode, string(errorBody))
+		return fmt.Errorf("CreateRecord API request for domain %s and record %+v failed with status: %d, body: %s", domain, record, resp.StatusCode, string(errorBody))
+
 	}
 
 	return nil
@@ -149,7 +150,7 @@ func (c *SpaceshipClient) DeleteRecord(domain string, record SpaceshipRecord) er
 		if resp.Body != nil {
 			errorBody, _ = io.ReadAll(resp.Body)
 		}
-		return fmt.Errorf("API request failed with status: %d, body: %s", resp.StatusCode, string(errorBody))
+		return fmt.Errorf("DeleteRecord API request for domain %s and record %+v failed with status: %d, body: %s", domain, record, resp.StatusCode, string(errorBody))
 	}
 
 	return nil
