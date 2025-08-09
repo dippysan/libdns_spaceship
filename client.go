@@ -162,16 +162,6 @@ func (c *SpaceshipClient) DeleteRecord(domain string, record SpaceshipRecord) er
 	return nil
 }
 
-// fqdn returns a fully qualified domain name.
-func (p *Provider) fqdn(name, zone string) string {
-	name = strings.TrimRight(name, ".")
-	zone = strings.TrimRight(zone, ".")
-	if !strings.HasSuffix(name, zone) {
-		name += "." + zone
-	}
-	return name
-}
-
 // upsertRecord adds or updates records to the zone. It returns the records that were added or updated.
 func (p *Provider) upsertRecord(record libdns.Record, zone string) (*SpaceshipRecord, error) {
 	records, err := p.client.GetRecords(zone)
@@ -183,7 +173,7 @@ func (p *Provider) upsertRecord(record libdns.Record, zone string) (*SpaceshipRe
 
 	update_rec := SpaceshipRecord{
 		Type: rr.Type,
-		Name: p.fqdn(rr.Name, zone),
+		Name: rr.Name,
 		TTL:  int(rr.TTL.Seconds()),
 	}
 
@@ -210,7 +200,7 @@ func (p *Provider) upsertRecord(record libdns.Record, zone string) (*SpaceshipRe
 
 	// Check if record exists and update it
 	for _, rec := range records {
-		if p.fqdn(rec.Name, zone) == p.fqdn(rr.Name, zone) && rec.Type == rr.Type {
+		if rec.Name == rr.Name && rec.Type == rr.Type {
 			// For Spaceship API, we need to delete and recreate for updates
 			err := p.client.DeleteRecord(zone, rec)
 			if err != nil {

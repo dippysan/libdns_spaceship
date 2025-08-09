@@ -238,7 +238,7 @@ func (p *Provider) convertFromLibdnsRecord(record libdns.Record, zone string) Sp
 
 	rec := SpaceshipRecord{
 		Type: rr.Type,
-		Name: p.fqdn(rr.Name, zone),
+		Name: rr.Name,
 		TTL:  int(rr.TTL.Seconds()),
 	}
 
@@ -381,12 +381,12 @@ func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []lib
 		// Find the record to delete
 		found := false
 		for j, rec := range all_records {
-			fqdnMatch := p.fqdn(rec.Name, zone) == p.fqdn(rr.Name, zone)
+			nameMatch := rec.Name == rr.Name
 			typeMatch := rec.Type == rr.Type
-			log.Printf("[LIBDNS-DEBUG] Comparing with existing record %d: Name='%s'->FQDN='%s', Type='%s', FQDN_match=%v, Type_match=%v",
-				j, rec.Name, p.fqdn(rec.Name, zone), rec.Type, fqdnMatch, typeMatch)
+			log.Printf("[LIBDNS-DEBUG] Comparing with existing record %d: Name='%s', Type='%s', Name_match=%v, Type_match=%v",
+				j, rec.Name, rec.Type, nameMatch, typeMatch)
 
-			if fqdnMatch && typeMatch {
+			if nameMatch && typeMatch {
 				log.Printf("[LIBDNS-DEBUG] Found matching record %d for deletion: %+v", j, rec)
 				err := p.client.DeleteRecord(zone, rec)
 				if err != nil {
